@@ -204,6 +204,7 @@
     <div class="section">
       <div class="section-title">🚌 Transporte</div>
       <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('buses', this.checked)"><span class="label">Autobuses en vivo</span><span class="count" id="countBuses">-</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('busRoutes', this.checked)"><span class="label">Recorridos de línea</span><span class="count" id="countRoutes">-</span></label>
       <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('paradas', this.checked)"><span class="label">Paradas de bus</span><span class="count">462</span></label>
       <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('tusbic', this.checked)"><span class="label">TUeBICI estaciones</span><span class="count" id="countBici">-</span></label>
       <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('carrilBici', this.checked)"><span class="label">Carril bici</span><span class="count">1.273</span></label>
@@ -319,10 +320,14 @@
     let activeFillFilter = 'all';
     let sidebarOpen = false;
     let busInterval = null;
+    const busMarkers = new Map(); // vehicleId -> L.Marker
+    let busLastDataTs = null;
+    let selectedBusLine = null; // lineId for active filter, or null
 
     // --- Map ---
     const map = L.map('map', { zoomControl: false }).setView([43.4623, -3.8100], 14);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
+    map.on('click', () => { if (selectedBusLine) clearBusLineFocus(); });
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OSM &copy; CARTO | Datos Abiertos Santander',
       maxZoom: 19
@@ -342,6 +347,7 @@
       containers: cluster('#38bdf8', 34),
       papeleras: cluster('#a855f7', 28),
       buses: L.layerGroup(),
+      busRoutes: L.layerGroup(),
       paradas: cluster('#06b6d4', 28),
       tusbic: L.layerGroup(),
       carrilBici: L.layerGroup(),
@@ -386,7 +392,7 @@
     // --- Layer toggle ---
     function toggleLayer(name, on) {
       if (on) { map.addLayer(layers[name]); if (!layers[name]._loaded && name !== 'containers') loadLayer(name); }
-      else { map.removeLayer(layers[name]); if (name === 'buses' && busInterval) { clearInterval(busInterval); busInterval = null; } }
+      else { map.removeLayer(layers[name]); if (name === 'buses' && busInterval) { clearTimeout(busInterval); busInterval = null; } }
     }
 
     // --- Fetch helpers ---
@@ -420,7 +426,7 @@
     // ========================
     async function loadLayer(name) {
       try {
-        const loaders = { papeleras: loadPapeleras, buses: loadBuses, paradas: loadParadas, tusbic: loadTusBic,
+        const loaders = { papeleras: loadPapeleras, buses: loadBuses, busRoutes: loadBusRoutes, paradas: loadParadas, tusbic: loadTusBic,
           carrilBici: loadCarrilBici, zonasOla: loadZonasOla, plazasMotos: loadPlazasMotos, plazasPmr: loadPlazasPmr,
           zonasCarga: loadZonasCarga, playas: loadPlayas, museos: loadMuseos, monumentos: loadMonumentos,
           deporte: loadDeporte, bibliotecas: loadBibliotecas, districts: loadDistricts, comercios: loadComercios,
@@ -443,30 +449,186 @@
     }
 
     // --- Transport ---
+    function computeHeading(lat1, lng1, lat2, lng2) {
+      const toRad = d => d * Math.PI / 180;
+      const dLng = toRad(lng2 - lng1);
+      const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+      return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+    }
+    function animateMarker(marker, newLatLng, duration) {
+      const start = marker.getLatLng();
+      const startTime = performance.now();
+      const dlat = newLatLng[0] - start.lat, dlng = newLatLng[1] - start.lng;
+      if (Math.abs(dlat) < 1e-7 && Math.abs(dlng) < 1e-7) return;
+      function step(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const e = t * (2 - t);
+        marker.setLatLng([start.lat + dlat * e, start.lng + dlng * e]);
+        if (t < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+    function busSpeedStyle(speed) {
+      const s = parseFloat(speed) || 0;
+      if (s === 0) return { bg: '#64748b', border: '#475569', label: 'Detenido' };
+      if (s <= 15) return { bg: '#06b6d4', border: '#0891b2', label: 'Lento' };
+      if (s <= 40) return { bg: '#22c55e', border: '#16a34a', label: 'Normal' };
+      return { bg: '#f59e0b', border: '#d97706', label: 'Rápido' };
+    }
+    function busIcon(line, speed, heading) {
+      const style = busSpeedStyle(speed);
+      const s = parseFloat(speed) || 0;
+      const arrow = s > 0 ? `<span style="display:inline-block;transform:rotate(${Math.round(heading)}deg);font-size:7px;margin-left:2px">&#9650;</span>` : '';
+      return L.divIcon({
+        html: `<div style="background:${style.bg};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;white-space:nowrap;border:1px solid ${style.border};display:flex;align-items:center">${line}${arrow}</div>`,
+        className: '', iconSize: [32, 16], iconAnchor: [16, 8]
+      });
+    }
+    function timeAgo(isoStr) {
+      const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+      if (diff < 10) return 'ahora';
+      if (diff < 60) return `hace ${diff}s`;
+      if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+      return `hace ${Math.floor(diff / 3600)}h`;
+    }
+    function focusBusLine(lineId) {
+      if (lineId === selectedBusLine) { clearBusLineFocus(); return; }
+      selectedBusLine = lineId;
+      // Ensure both layers are active
+      if (!map.hasLayer(layers.buses)) { map.addLayer(layers.buses); if (!layers.buses._loaded) loadLayer('buses'); }
+      if (!map.hasLayer(layers.busRoutes)) { map.addLayer(layers.busRoutes); if (!layers.busRoutes._loaded) loadLayer('busRoutes'); }
+      applyBusLineFocus();
+    }
+    function applyBusLineFocus() {
+      if (!selectedBusLine) return;
+      const bounds = L.latLngBounds([]);
+      // Style bus markers
+      busMarkers.forEach((m, vid) => {
+        if (m._busLineId === selectedBusLine) {
+          m.setOpacity(1); m.setZIndexOffset(1000);
+          bounds.extend(m.getLatLng());
+        } else {
+          m.setOpacity(0.15); m.setZIndexOffset(0);
+        }
+      });
+      // Style route polylines
+      layers.busRoutes.eachLayer(pl => {
+        if (pl._busLineId === selectedBusLine) {
+          pl.setStyle({ weight: 5, opacity: 0.9 });
+          bounds.extend(pl.getBounds());
+        } else {
+          pl.setStyle({ weight: 1, opacity: 0.1 });
+        }
+      });
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    }
+    function clearBusLineFocus() {
+      selectedBusLine = null;
+      busMarkers.forEach(m => { m.setOpacity(1); m.setZIndexOffset(0); });
+      layers.busRoutes.eachLayer(pl => { pl.setStyle({ weight: 3, opacity: 0.5 }); });
+    }
+    function busPopup(b) {
+      const lineId = b['ayto:linea'] || '';
+      const line = b._lineNum || lineId || '?';
+      const speed = parseFloat(b['ayto:velocidad']) || 0;
+      const style = busSpeedStyle(speed);
+      const route = b._routeName || '';
+      const vid = b['ayto:vehiculo'] || '—';
+      const ts = b['ayto:instante'] || '';
+      return `<div class="popup-content"><h4>🚌 Línea ${line}</h4>${route ? `<div style="color:#94a3b8;font-size:11px;margin:-6px 0 8px">${route}</div>` : ''}<div class="detail"><span class="detail-label">Vehículo</span><span class="detail-value">${vid}</span></div><div class="detail"><span class="detail-label">Velocidad</span><span class="detail-value"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${style.bg};margin-right:4px"></span>${speed} km/h · ${style.label}</span></div><div class="detail"><span class="detail-label">Actualizado</span><span class="detail-value">${ts ? timeAgo(ts) : '—'}</span></div><button onclick="focusBusLine('${lineId}')" style="margin-top:8px;width:100%;padding:5px 0;background:#06b6d422;color:#06b6d4;border:1px solid #06b6d4;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Ver ruta completa</button></div>`;
+    }
     async function loadBuses() {
       layers.buses._loaded = true;
+      let refreshMs = 15000;
       async function refresh() {
-        layers.buses.clearLayers();
-        const data = await fetchPage('buses', 500);
-        let count = 0;
-        data.forEach(b => {
-          const lat = parseFloat(b['wgs84_pos:lat']), lng = parseFloat(b['wgs84_pos:long']);
-          if (isNaN(lat) || isNaN(lng)) return;
-          const speed = b['ayto:velocidad'] || '0';
-          const line = b['ayto:linea'] || '?';
-          count++;
-          const m = L.marker([lat, lng], { icon: L.divIcon({
-            html: `<div style="background:#06b6d4;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;white-space:nowrap;border:1px solid #0891b2">${line}</div>`,
-            className: '', iconSize: [24, 16], iconAnchor: [12, 8]
-          })});
-          m.bindPopup(`<div class="popup-content"><h4>🚌 Línea ${line}</h4><div class="detail"><span class="detail-label">Vehículo</span><span class="detail-value">${b['ayto:vehiculo'] || '—'}</span></div><div class="detail"><span class="detail-label">Velocidad</span><span class="detail-value">${speed} km/h</span></div></div>`);
-          layers.buses.addLayer(m);
-        });
-        document.getElementById('countBuses').textContent = count;
-        document.getElementById('kpiBuses').textContent = count;
+        try {
+          const r = await fetch('/api/buses');
+          const json = await r.json();
+          const data = json.resources || [];
+          const meta = json.meta || {};
+          const currentIds = new Set();
+          data.forEach(b => {
+            const lat = parseFloat(b['wgs84_pos:lat']), lng = parseFloat(b['wgs84_pos:long']);
+            if (isNaN(lat) || isNaN(lng)) return;
+            const vid = b['ayto:vehiculo'];
+            if (!vid) return;
+            currentIds.add(vid);
+            const speed = b['ayto:velocidad'] || '0';
+            const line = b._lineNum || b['ayto:linea'] || '?';
+            const prevLat = parseFloat(b._prevLat), prevLng = parseFloat(b._prevLng);
+            const heading = (!isNaN(prevLat) && !isNaN(prevLng)) ? computeHeading(prevLat, prevLng, lat, lng) : 0;
+            const lineId = b['ayto:linea'] || '';
+            if (busMarkers.has(vid)) {
+              const m = busMarkers.get(vid);
+              m._busLineId = lineId;
+              animateMarker(m, [lat, lng], 1000);
+              m.setIcon(busIcon(line, speed, heading));
+              m.setPopupContent(busPopup(b));
+            } else {
+              const m = L.marker([lat, lng], { icon: busIcon(line, speed, heading) });
+              m._busLineId = lineId;
+              m.bindPopup(busPopup(b));
+              m.on('click', () => focusBusLine(lineId));
+              layers.buses.addLayer(m);
+              busMarkers.set(vid, m);
+            }
+          });
+          // Remove markers for vehicles no longer active
+          busMarkers.forEach((m, vid) => {
+            if (!currentIds.has(vid)) { layers.buses.removeLayer(m); busMarkers.delete(vid); }
+          });
+          // Re-apply line focus if active
+          if (selectedBusLine) applyBusLineFocus();
+          const count = currentIds.size;
+          document.getElementById('countBuses').textContent = count || 'Sin servicio';
+          document.getElementById('kpiBuses').textContent = count || '—';
+          // Adaptive refresh
+          if (meta.dataTimestamp === busLastDataTs) { refreshMs = Math.min(refreshMs + 5000, 60000); }
+          else { refreshMs = 15000; }
+          busLastDataTs = meta.dataTimestamp;
+        } catch (e) { console.error('Bus refresh error:', e); }
+        if (busInterval) { clearTimeout(busInterval); }
+        busInterval = setTimeout(refresh, refreshMs);
       }
       await refresh();
-      busInterval = setInterval(refresh, 15000);
+    }
+    // Pause bus refresh when tab hidden
+    document.addEventListener('visibilitychange', () => {
+      if (!layers.buses._loaded || !map.hasLayer(layers.buses)) return;
+      if (document.hidden) {
+        if (busInterval) { clearTimeout(busInterval); busInterval = null; }
+      } else {
+        if (!busInterval) loadBuses();
+      }
+    });
+
+    // --- Bus Routes ---
+    function lineColor(lineNum) {
+      let hash = 0;
+      for (const c of String(lineNum)) hash = ((hash << 5) - hash) + c.charCodeAt(0);
+      return `hsl(${Math.abs(hash) % 360}, 70%, 55%)`;
+    }
+    async function loadBusRoutes() {
+      layers.busRoutes._loaded = true;
+      try {
+        const r = await fetch('/api/bus-routes');
+        const json = await r.json();
+        const routes = json.routes || [];
+        routes.forEach(route => {
+          if (!route.segments || !route.segments.length) return;
+          const color = lineColor(route.lineNum);
+          route.segments.forEach(seg => {
+            if (seg.length < 2) return;
+            const polyline = L.polyline(seg, { color, weight: 3, opacity: 0.5, smoothFactor: 1 });
+            polyline._busLineId = route.lineId;
+            polyline.bindTooltip(`${route.lineNum} — ${route.routeName}`, { sticky: true });
+            polyline.on('click', () => focusBusLine(route.lineId));
+            layers.busRoutes.addLayer(polyline);
+          });
+        });
+        document.getElementById('countRoutes').textContent = routes.length;
+      } catch (e) { console.error('Bus routes error:', e); }
     }
 
     async function loadParadas() {
