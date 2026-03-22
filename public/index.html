@@ -3,68 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Santander Basuras - Estado en Tiempo Real</title>
+  <title>Santander Pulso - La ciudad en tiempo real</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
-
     #map { width: 100%; height: 100vh; }
 
-    /* Header overlay */
     .header {
       position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
       background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px);
-      padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px; display: flex; align-items: center; justify-content: space-between;
       border-bottom: 1px solid rgba(148, 163, 184, 0.15);
     }
     .header h1 { font-size: 18px; font-weight: 700; color: #f8fafc; }
     .header h1 span { color: #38bdf8; }
-    .header-stats { display: flex; gap: 16px; font-size: 13px; color: #94a3b8; }
+    .header-stats { display: flex; gap: 16px; font-size: 12px; color: #94a3b8; }
     .header-stats .stat { display: flex; align-items: center; gap: 5px; }
     .header-stats .dot { width: 8px; height: 8px; border-radius: 50%; }
 
-    /* Legend */
-    .legend {
-      position: fixed; bottom: 24px; left: 24px; z-index: 1000;
-      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px);
-      border-radius: 12px; padding: 14px 18px;
-      border: 1px solid rgba(148, 163, 184, 0.15);
-      font-size: 12px;
+    .sidebar {
+      position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 1000;
+      background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px);
+      border-right: 1px solid rgba(148, 163, 184, 0.15);
+      overflow-y: auto; padding: 14px; font-size: 13px;
+      transition: transform 0.3s;
     }
-    .legend h3 { font-size: 13px; margin-bottom: 8px; color: #f8fafc; }
-    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .legend-color { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); }
+    .sidebar.collapsed { transform: translateX(-280px); }
+    .sidebar-toggle {
+      position: fixed; top: 56px; left: 8px; z-index: 1001;
+      background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(148, 163, 184, 0.2);
+      color: #94a3b8; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 16px;
+      transition: left 0.3s;
+    }
+    .sidebar-toggle.open { left: 288px; }
 
-    /* Filter panel */
-    .filters {
-      position: fixed; top: 60px; right: 24px; z-index: 1000;
-      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px);
-      border-radius: 12px; padding: 14px 18px;
-      border: 1px solid rgba(148, 163, 184, 0.15);
-      font-size: 13px;
+    .section { margin-bottom: 14px; }
+    .section-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+      color: #64748b; margin-bottom: 6px; font-weight: 600;
     }
-    .filters h3 { font-size: 13px; margin-bottom: 10px; color: #f8fafc; }
+    .layer-toggle {
+      display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+      border-radius: 6px; cursor: pointer; transition: background 0.15s; margin-bottom: 1px; font-size: 12px;
+    }
+    .layer-toggle:hover { background: rgba(148, 163, 184, 0.08); }
+    .layer-toggle input { accent-color: #38bdf8; width: 14px; height: 14px; }
+    .layer-toggle .icon { font-size: 13px; }
+    .layer-toggle .label { flex: 1; color: #cbd5e1; }
+    .layer-toggle .count { color: #64748b; font-size: 10px; }
+
     .filter-btn {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 5px 12px; margin: 2px; border-radius: 20px;
-      border: 1px solid rgba(148, 163, 184, 0.3); background: transparent;
-      color: #94a3b8; cursor: pointer; font-size: 12px; transition: all 0.2s;
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 3px 8px; margin: 1px; border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;
+      color: #94a3b8; cursor: pointer; font-size: 10px; transition: all 0.2s;
     }
     .filter-btn.active { background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8; }
-    .filter-btn:hover { border-color: #64748b; }
-    .filter-btn .icon { font-size: 14px; }
 
-    .filter-section { margin-bottom: 10px; }
-    .filter-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .stats-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 999;
+      background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(148, 163, 184, 0.15);
+      padding: 8px 16px; display: flex; gap: 16px; overflow-x: auto; font-size: 11px;
+    }
+    .stats-panel.shifted { left: 280px; }
+    .stat-card { display: flex; flex-direction: column; min-width: 80px; }
+    .stat-card .stat-value { font-size: 18px; font-weight: 700; color: #f8fafc; }
+    .stat-card .stat-label { color: #64748b; font-size: 10px; }
+    .stat-card .stat-bar { height: 3px; border-radius: 2px; background: #1e293b; margin-top: 3px; overflow: hidden; }
+    .stat-card .stat-bar-inner { height: 100%; border-radius: 2px; }
 
-    /* Loading */
+    .legend {
+      position: fixed; bottom: 56px; right: 12px; z-index: 1000;
+      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px);
+      border-radius: 8px; padding: 8px 10px;
+      border: 1px solid rgba(148, 163, 184, 0.15); font-size: 10px;
+    }
+    .legend h3 { font-size: 10px; margin-bottom: 4px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; margin-bottom: 1px; color: #cbd5e1; }
+    .legend-color { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.15); }
+
     .loading-overlay {
-      position: fixed; inset: 0; z-index: 2000;
-      background: #0f172a; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
+      position: fixed; inset: 0; z-index: 2000; background: #0f172a;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
       transition: opacity 0.5s;
     }
     .loading-overlay.hidden { opacity: 0; pointer-events: none; }
@@ -73,71 +98,183 @@
     .loading-text { margin-top: 16px; color: #94a3b8; font-size: 14px; }
     .loading-progress { margin-top: 8px; color: #64748b; font-size: 12px; }
 
-    /* Popup */
     .leaflet-popup-content-wrapper {
       background: rgba(15, 23, 42, 0.95) !important; color: #e2e8f0 !important;
       border-radius: 10px !important; border: 1px solid rgba(148, 163, 184, 0.15) !important;
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px); box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
     }
     .leaflet-popup-tip { background: rgba(15, 23, 42, 0.95) !important; }
-    .popup-content { font-size: 13px; line-height: 1.6; }
-    .popup-content h4 { font-size: 15px; color: #f8fafc; margin-bottom: 6px; }
-    .popup-content .type-badge {
-      display: inline-block; padding: 2px 10px; border-radius: 12px;
-      font-size: 11px; font-weight: 600; margin-bottom: 8px;
-    }
-    .popup-content .fill-bar { height: 6px; border-radius: 3px; background: #1e293b; margin: 6px 0; overflow: hidden; }
-    .popup-content .fill-bar-inner { height: 100%; border-radius: 3px; transition: width 0.3s; }
-    .popup-content .detail { display: flex; justify-content: space-between; padding: 2px 0; }
+    .popup-content { font-size: 12px; line-height: 1.5; min-width: 200px; }
+    .popup-content h4 { font-size: 13px; color: #f8fafc; margin-bottom: 3px; }
+    .popup-content .badge { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 9px; font-weight: 600; margin-bottom: 4px; }
+    .popup-content .fill-bar { height: 4px; border-radius: 2px; background: #1e293b; margin: 3px 0; overflow: hidden; }
+    .popup-content .fill-bar-inner { height: 100%; border-radius: 2px; }
+    .popup-content .detail { display: flex; justify-content: space-between; padding: 1px 0; }
     .popup-content .detail-label { color: #64748b; }
     .popup-content .detail-value { color: #f8fafc; font-weight: 500; }
 
-    /* Responsive */
-    @media (max-width: 600px) {
-      .header h1 { font-size: 15px; }
+    .district-tooltip {
+      background: rgba(15, 23, 42, 0.9) !important; color: #e2e8f0 !important;
+      border: 1px solid rgba(56, 189, 248, 0.3) !important; border-radius: 6px !important;
+      padding: 4px 8px !important; font-size: 11px !important;
+    }
+
+    .weather-mobile { display: none; }
+    .weather-widget {
+      position: fixed; top: 56px; right: 12px; z-index: 1000;
+      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(12px);
+      border-radius: 10px; padding: 10px 14px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      font-size: 11px; min-width: 190px;
+    }
+    .weather-widget .weather-now { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .weather-widget .weather-icon { font-size: 24px; }
+    .weather-widget .weather-temp { font-size: 20px; font-weight: 700; color: #f8fafc; }
+    .weather-widget .weather-desc { color: #94a3b8; font-size: 10px; }
+    .weather-widget .weather-details { display: flex; gap: 10px; color: #64748b; font-size: 10px; }
+    .weather-widget .weather-details span { display: flex; align-items: center; gap: 2px; }
+    .weather-forecast { display: flex; gap: 4px; margin-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.1); padding-top: 6px; }
+    .weather-forecast .fc-day { text-align: center; flex: 1; }
+    .weather-forecast .fc-day .fc-name { font-size: 9px; color: #64748b; text-transform: uppercase; }
+    .weather-forecast .fc-day .fc-icon { font-size: 14px; margin: 1px 0; }
+    .weather-forecast .fc-day .fc-temps { font-size: 9px; color: #94a3b8; }
+    .weather-forecast .fc-day .fc-temps b { color: #f8fafc; }
+
+    /* News ticker */
+    .news-widget {
+      position: fixed; bottom: 50px; left: 0; right: 0; z-index: 998;
+      background: rgba(15, 23, 42, 0.85); font-size: 11px; color: #94a3b8;
+      padding: 3px 12px; white-space: nowrap; overflow: hidden;
+      border-top: 1px solid rgba(148, 163, 184, 0.1); display: none;
+    }
+    .news-widget.active { display: block; }
+    .news-ticker { display: inline-block; animation: ticker 60s linear infinite; }
+    @keyframes ticker { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+    .news-ticker a { color: #38bdf8; text-decoration: none; margin-right: 40px; }
+
+    @media (max-width: 768px) {
+      .sidebar { width: 260px; }
+      .sidebar-toggle.open { left: 268px; }
+      .stats-panel.shifted { left: 0; }
+      .stats-panel { gap: 12px; padding: 6px 10px; }
+      .stat-card .stat-value { font-size: 16px; }
       .header-stats { display: none; }
-      .filters { top: 56px; right: 8px; left: 8px; }
-      .legend { bottom: 12px; left: 12px; }
+      .weather-widget#weatherWidget { display: none; }
+      .weather-mobile { display: block; position: static; border-radius: 0; border: none; border-bottom: 1px solid rgba(148, 163, 184, 0.1); margin: -14px -14px 10px -14px; padding: 8px 12px; min-width: unset; }
+      .weather-mobile .weather-icon { font-size: 20px; }
+      .weather-mobile .weather-temp { font-size: 18px; }
+      .legend { bottom: 50px; right: 6px; }
+      .news-widget { bottom: 42px; }
     }
   </style>
 </head>
 <body>
   <div class="loading-overlay" id="loading">
     <div class="spinner"></div>
-    <div class="loading-text">Cargando contenedores de Santander...</div>
+    <div class="loading-text">Cargando datos de Santander...</div>
     <div class="loading-progress" id="loadingProgress">Conectando con API...</div>
   </div>
 
   <div class="header">
-    <h1>🗑️ <span>Santander</span> Basuras</h1>
+    <h1>📡 <span>Santander</span> Pulso</h1>
     <div class="header-stats">
       <div class="stat"><div class="dot" style="background:#22c55e"></div> <span id="statTotal">-</span> contenedores</div>
       <div class="stat"><div class="dot" style="background:#38bdf8"></div> <span id="statSensors">-</span> con sensor</div>
-      <div class="stat" id="statUpdate" style="display:none">Actualizado: <span id="statTime">-</span></div>
+      <div class="stat">Actualizado: <span id="statTime">-</span></div>
     </div>
   </div>
 
-  <div class="filters">
-    <h3>Filtros</h3>
-    <div class="filter-section">
-      <div class="filter-label">Tipo de residuo</div>
-      <div id="typeFilters"></div>
+  <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
+
+  <div class="sidebar collapsed" id="sidebar">
+    <div class="weather-widget weather-mobile" id="weatherWidgetMobile"></div>
+
+    <div class="section">
+      <div class="section-title">🗑️ Residuos</div>
+      <label class="layer-toggle"><input type="checkbox" checked onchange="toggleLayer('containers', this.checked)"><span class="label">Contenedores</span><span class="count" id="countContainers">-</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('papeleras', this.checked)"><span class="label">Papeleras</span><span class="count">3.774</span></label>
+      <div style="margin:4px 0 2px 0">
+        <div id="typeFilters" style="margin-bottom:4px"></div>
+        <button class="filter-btn active" data-filter="all" onclick="setFillFilter('all')">Todos</button>
+        <button class="filter-btn" data-filter="sensor" onclick="setFillFilter('sensor')">Con sensor</button>
+        <button class="filter-btn" data-filter="full" onclick="setFillFilter('full')">Llenos &gt;80%</button>
+      </div>
     </div>
-    <div class="filter-section">
-      <div class="filter-label">Estado</div>
-      <button class="filter-btn active" data-filter="all" onclick="toggleFillFilter('all')">Todos</button>
-      <button class="filter-btn" data-filter="sensor" onclick="toggleFillFilter('sensor')">Con sensor</button>
-      <button class="filter-btn" data-filter="full" onclick="toggleFillFilter('full')">Llenos (>80%)</button>
+
+    <div class="section">
+      <div class="section-title">🚌 Transporte</div>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('buses', this.checked)"><span class="label">Autobuses en vivo</span><span class="count" id="countBuses">-</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('paradas', this.checked)"><span class="label">Paradas de bus</span><span class="count">462</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('tusbic', this.checked)"><span class="label">TUeBICI estaciones</span><span class="count" id="countBici">-</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('carrilBici', this.checked)"><span class="label">Carril bici</span><span class="count">1.273</span></label>
     </div>
+
+    <div class="section">
+      <div class="section-title">🅿️ Movilidad</div>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('zonasOla', this.checked)"><span class="label">Zonas OLA</span><span class="count">25</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('plazasMotos', this.checked)"><span class="label">Parking motos</span><span class="count">314</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('plazasPmr', this.checked)"><span class="label">Plazas PMR ♿</span><span class="count">371</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('zonasCarga', this.checked)"><span class="label">Zonas carga</span><span class="count">247</span></label>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🏖️ Turismo</div>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('playas', this.checked)"><span class="label">Playas</span><span class="count">13</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('museos', this.checked)"><span class="label">Museos</span><span class="count">10</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('monumentos', this.checked)"><span class="label">Monumentos</span><span class="count">50</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('deporte', this.checked)"><span class="label">Deportes</span><span class="count">30</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('bibliotecas', this.checked)"><span class="label">Bibliotecas</span><span class="count">8</span></label>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🏙️ Ciudad</div>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('districts', this.checked)"><span class="label">Distritos</span><span class="count">11</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('comercios', this.checked)"><span class="label">Comercios</span><span class="count">2.472</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('mercados', this.checked)"><span class="label">Mercados</span><span class="count">13</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('hosteleria', this.checked)"><span class="label">Hostelería</span><span class="count">258</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('parques', this.checked)"><span class="label">Parques</span><span class="count">9</span></label>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🌿 Medio ambiente</div>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('sensors', this.checked)"><span class="label">Sensores amb.</span><span class="count">332</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('aguaCalidad', this.checked)"><span class="label">Calidad agua</span><span class="count">18</span></label>
+      <div id="pollenInfo" style="padding:2px 6px;color:#64748b;font-size:10px;display:none"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">ℹ️ Info</div>
+      <div style="color:#64748b; font-size:10px; line-height:1.4;">
+        <a href="http://datos.santander.es" target="_blank" style="color:#38bdf8">datos.santander.es</a> ·
+        <a href="https://www.aemet.es" target="_blank" style="color:#38bdf8">AEMET</a> ·
+        <a href="https://nextbike.net" target="_blank" style="color:#38bdf8">Nextbike</a><br>
+        CC BY 4.0 · Auto-refresco 2 min
+      </div>
+    </div>
+  </div>
+
+  <div class="weather-widget" id="weatherWidget">
+    <div class="weather-now"><span class="weather-icon">⛅</span><div><div class="weather-temp">--°</div><div class="weather-desc">Cargando...</div></div></div>
   </div>
 
   <div class="legend">
     <h3>Nivel de llenado</h3>
-    <div class="legend-item"><div class="legend-color" style="background:#22c55e"></div> Bajo (&lt;40%)</div>
-    <div class="legend-item"><div class="legend-color" style="background:#eab308"></div> Medio (40-70%)</div>
-    <div class="legend-item"><div class="legend-color" style="background:#f97316"></div> Alto (70-90%)</div>
-    <div class="legend-item"><div class="legend-color" style="background:#ef4444"></div> Lleno (&gt;90%)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#22c55e"></div> Bajo &lt;40%</div>
+    <div class="legend-item"><div class="legend-color" style="background:#eab308"></div> Medio 40-70%</div>
+    <div class="legend-item"><div class="legend-color" style="background:#f97316"></div> Alto 70-90%</div>
+    <div class="legend-item"><div class="legend-color" style="background:#ef4444"></div> Lleno &gt;90%</div>
     <div class="legend-item"><div class="legend-color" style="background:#64748b"></div> Sin sensor</div>
+  </div>
+
+  <div class="news-widget" id="newsWidget"><div class="news-ticker" id="newsTicker"></div></div>
+
+  <div class="stats-panel" id="statsPanel">
+    <div class="stat-card"><span class="stat-value" id="kpiTotal">-</span><span class="stat-label">Contenedores</span></div>
+    <div class="stat-card"><span class="stat-value" id="kpiAvgFill">-</span><span class="stat-label">Llenado medio</span>
+      <div class="stat-bar"><div class="stat-bar-inner" id="kpiAvgFillBar" style="width:0%;background:#38bdf8"></div></div></div>
+    <div class="stat-card"><span class="stat-value" id="kpiFull">-</span><span class="stat-label">Llenos &gt;90%</span></div>
+    <div class="stat-card"><span class="stat-value" id="kpiBuses">-</span><span class="stat-label">Buses activos</span></div>
+    <div class="stat-card"><span class="stat-value" id="kpiBicis">-</span><span class="stat-label">Bicis libres</span></div>
   </div>
 
   <div id="map"></div>
@@ -145,204 +282,570 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script>
+    // --- UTM ---
+    proj4.defs('EPSG:25830', '+proj=utm +zone=30 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
+    function utmToLatLng(x, y) { const [lng, lat] = proj4('EPSG:25830', 'EPSG:4326', [x, y]); return [lat, lng]; }
+    function parseUTMPolygon(wkt) {
+      const m = wkt.match(/POLYGON\s*\(\((.+)\)\)/s);
+      if (!m) return null;
+      return m[1].split('),(').map(ring =>
+        ring.replace(/[()]/g, '').trim().split(',')
+          .map(p => { const [x, y] = p.trim().split(/\s+/).map(Number); return utmToLatLng(x, y); })
+          .filter(([a, b]) => !isNaN(a) && !isNaN(b))
+      );
+    }
+    function parseUTMLine(wkt) {
+      const m = wkt.match(/LINESTRING\s*\((.+)\)/s) || wkt.match(/MULTILINESTRING\s*\(\((.+)\)\)/s);
+      if (!m) return null;
+      return m[1].replace(/[()]/g, '').trim().split(',')
+        .map(p => { const [x, y] = p.trim().split(/\s+/).map(Number); return utmToLatLng(x, y); })
+        .filter(([a, b]) => !isNaN(a) && !isNaN(b));
+    }
+
     // --- Config ---
     const WASTE_TYPES = {
-      'Organico':  { icon: '🟤', color: '#a16207', label: 'Orgánico' },
-      'Envases':   { icon: '🟡', color: '#eab308', label: 'Envases' },
-      'Papel':     { icon: '🔵', color: '#3b82f6', label: 'Papel/Cartón' },
-      'Vidrio':    { icon: '🟢', color: '#22c55e', label: 'Vidrio' },
-      'Resto':     { icon: '⚫', color: '#64748b', label: 'Resto' },
+      'Organico': { icon: '🟤', color: '#a16207', label: 'Orgánico' },
+      'Envases': { icon: '🟡', color: '#eab308', label: 'Envases' },
+      'Papel': { icon: '🔵', color: '#3b82f6', label: 'Papel' },
+      'Vidrio': { icon: '🟢', color: '#22c55e', label: 'Vidrio' },
+      'Resto': { icon: '⚫', color: '#64748b', label: 'Resto' },
     };
-
-    function getFillColor(level) {
-      if (level === null || level === undefined) return '#64748b';
-      if (level < 40) return '#22c55e';
-      if (level < 70) return '#eab308';
-      if (level < 90) return '#f97316';
-      return '#ef4444';
-    }
-
-    function getFillLabel(level) {
-      if (level === null || level === undefined) return 'Sin datos';
-      if (level < 40) return 'Bajo';
-      if (level < 70) return 'Medio';
-      if (level < 90) return 'Alto';
-      return 'Lleno';
-    }
+    function getFillColor(l) { if (l == null) return '#64748b'; if (l < 40) return '#22c55e'; if (l < 70) return '#eab308'; if (l < 90) return '#f97316'; return '#ef4444'; }
+    function getFillLabel(l) { if (l == null) return 'Sin datos'; if (l < 40) return 'Bajo'; if (l < 70) return 'Medio'; if (l < 90) return 'Alto'; return 'Lleno'; }
 
     // --- State ---
     let allContainers = [];
     let activeTypes = new Set(Object.keys(WASTE_TYPES));
     let activeFillFilter = 'all';
-    let markers;
-    let map;
+    let sidebarOpen = false;
+    let busInterval = null;
 
-    // --- Map init ---
-    map = L.map('map', { zoomControl: false }).setView([43.4623, -3.8100], 14);
+    // --- Map ---
+    const map = L.map('map', { zoomControl: false }).setView([43.4623, -3.8100], 14);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a> | Datos: <a href="http://datos.santander.es">Santander Open Data</a>',
+      attribution: '&copy; OSM &copy; CARTO | Datos Abiertos Santander',
       maxZoom: 19
     }).addTo(map);
 
-    markers = L.markerClusterGroup({
-      maxClusterRadius: 50,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      iconCreateFunction: function(cluster) {
-        const count = cluster.getChildCount();
-        let size = count < 50 ? 'small' : count < 200 ? 'medium' : 'large';
-        let dim = size === 'small' ? 36 : size === 'medium' ? 44 : 52;
-        return L.divIcon({
-          html: `<div style="background:rgba(56,189,248,0.2);border:2px solid #38bdf8;border-radius:50%;width:${dim}px;height:${dim}px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#38bdf8">${count}</div>`,
-          className: '', iconSize: [dim, dim]
-        });
-      }
-    });
-    map.addLayer(markers);
+    // --- Layer groups ---
+    function cluster(color, sz = 32) {
+      return L.markerClusterGroup({ maxClusterRadius: 45, showCoverageOnHover: false,
+        iconCreateFunction: c => {
+          const n = c.getChildCount(), d = n < 50 ? sz : n < 200 ? sz + 8 : sz + 14;
+          return L.divIcon({ html: `<div style="background:${color}33;border:2px solid ${color};border-radius:50%;width:${d}px;height:${d}px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${color}">${n}</div>`, className: '', iconSize: [d, d] });
+        }
+      });
+    }
 
-    // --- Build type filter buttons ---
+    const layers = {
+      containers: cluster('#38bdf8', 34),
+      papeleras: cluster('#a855f7', 28),
+      buses: L.layerGroup(),
+      paradas: cluster('#06b6d4', 28),
+      tusbic: L.layerGroup(),
+      carrilBici: L.layerGroup(),
+      zonasOla: L.layerGroup(),
+      plazasMotos: cluster('#f59e0b', 26),
+      plazasPmr: cluster('#8b5cf6', 26),
+      zonasCarga: cluster('#14b8a6', 26),
+      playas: L.layerGroup(),
+      museos: L.layerGroup(),
+      monumentos: cluster('#ec4899', 26),
+      deporte: cluster('#10b981', 26),
+      bibliotecas: L.layerGroup(),
+      districts: L.layerGroup(),
+      comercios: cluster('#fb923c', 26),
+      mercados: L.layerGroup(),
+      hosteleria: cluster('#f43f5e', 26),
+      parques: L.layerGroup(),
+      sensors: L.layerGroup(),
+      aguaCalidad: L.layerGroup(),
+    };
+    map.addLayer(layers.containers);
+
+    // --- Sidebar ---
+    function toggleSidebar() {
+      sidebarOpen = !sidebarOpen;
+      document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+      document.getElementById('sidebarToggle').classList.toggle('open', sidebarOpen);
+      document.getElementById('statsPanel').classList.toggle('shifted', sidebarOpen);
+    }
+
+    // --- Type filters ---
     const typeFiltersEl = document.getElementById('typeFilters');
     Object.entries(WASTE_TYPES).forEach(([key, val]) => {
       const btn = document.createElement('button');
-      btn.className = 'filter-btn active';
-      btn.dataset.type = key;
-      btn.innerHTML = `<span class="icon">${val.icon}</span> ${val.label}`;
-      btn.onclick = () => toggleTypeFilter(key, btn);
+      btn.className = 'filter-btn active'; btn.dataset.type = key;
+      btn.innerHTML = `${val.icon} ${val.label}`;
+      btn.onclick = () => { activeTypes.has(key) ? activeTypes.delete(key) : activeTypes.add(key); btn.classList.toggle('active', activeTypes.has(key)); renderContainers(); };
       typeFiltersEl.appendChild(btn);
     });
+    function setFillFilter(f) { activeFillFilter = f; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === f)); renderContainers(); }
 
-    function toggleTypeFilter(type, btn) {
-      if (activeTypes.has(type)) { activeTypes.delete(type); btn.classList.remove('active'); }
-      else { activeTypes.add(type); btn.classList.add('active'); }
-      renderMarkers();
+    // --- Layer toggle ---
+    function toggleLayer(name, on) {
+      if (on) { map.addLayer(layers[name]); if (!layers[name]._loaded && name !== 'containers') loadLayer(name); }
+      else { map.removeLayer(layers[name]); if (name === 'buses' && busInterval) { clearInterval(busInterval); busInterval = null; } }
     }
 
-    function toggleFillFilter(filter) {
-      activeFillFilter = filter;
-      document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
-      renderMarkers();
-    }
-
-    // --- Fetch all data ---
-    async function fetchAllContainers() {
-      const progress = document.getElementById('loadingProgress');
-      let all = [];
-      let page = 1;
-      const perPage = 500;
-
-      while (true) {
-        progress.textContent = `Cargando página ${page}...`;
-        const res = await fetch(`/api/contenedores?items=${perPage}&page=${page}`);
-        const data = await res.json();
-        if (!data.resources || data.resources.length === 0) break;
-        all = all.concat(data.resources);
-        if (all.length >= data.summary.items) break;
+    // --- Fetch helpers ---
+    async function fetchAll(endpoint, max = 100) {
+      let all = [], page = 1;
+      while (page <= max) {
+        const r = await fetch(`/api/${endpoint}?items=500&page=${page}`);
+        const d = await r.json();
+        if (!d.resources || !d.resources.length) break;
+        all = all.concat(d.resources);
+        if (all.length >= d.summary.items) break;
         page++;
       }
-
       return all;
     }
+    async function fetchPage(endpoint, items = 500) {
+      const r = await fetch(`/api/${endpoint}?items=${items}`);
+      return (await r.json()).resources || [];
+    }
 
-    // --- Create marker ---
-    function createMarker(c) {
-      const lat = parseFloat(c['ayto:latitud']);
-      const lng = parseFloat(c['ayto:longitud']);
+    // --- Icon helper ---
+    function dot(color, size = 8, opacity = 0.7) {
+      return L.divIcon({ html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};opacity:${opacity}"></div>`, className: '', iconSize: [size, size], iconAnchor: [size/2, size/2] });
+    }
+    function pin(emoji, size = 20) {
+      return L.divIcon({ html: `<div style="font-size:${size}px;line-height:1">${emoji}</div>`, className: '', iconSize: [size, size], iconAnchor: [size/2, size] });
+    }
+
+    // ========================
+    // LAYER LOADERS
+    // ========================
+    async function loadLayer(name) {
+      try {
+        const loaders = { papeleras: loadPapeleras, buses: loadBuses, paradas: loadParadas, tusbic: loadTusBic,
+          carrilBici: loadCarrilBici, zonasOla: loadZonasOla, plazasMotos: loadPlazasMotos, plazasPmr: loadPlazasPmr,
+          zonasCarga: loadZonasCarga, playas: loadPlayas, museos: loadMuseos, monumentos: loadMonumentos,
+          deporte: loadDeporte, bibliotecas: loadBibliotecas, districts: loadDistricts, comercios: loadComercios,
+          mercados: loadMercados, hosteleria: loadHosteleria, parques: loadParques, sensors: loadSensors,
+          aguaCalidad: loadAguaCalidad };
+        if (loaders[name]) await loaders[name]();
+      } catch (e) { console.error(`Error loading ${name}:`, e); }
+    }
+
+    // --- Waste ---
+    async function loadPapeleras() {
+      const data = await fetchAll('papeleras'); layers.papeleras._loaded = true;
+      data.forEach(p => {
+        const lat = parseFloat(p['ayto:latitud']), lng = parseFloat(p['ayto:longitud']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#a855f7', 6) });
+        m.bindPopup(`<div class="popup-content"><h4>🚮 Papelera</h4><div class="detail"><span class="detail-value">${p['ayto:direccion'] || '—'}</span></div><div class="detail"><span class="detail-label">Capacidad</span><span class="detail-value">${p['ayto:capacidad'] || '—'}L</span></div></div>`);
+        layers.papeleras.addLayer(m);
+      });
+    }
+
+    // --- Transport ---
+    async function loadBuses() {
+      layers.buses._loaded = true;
+      async function refresh() {
+        layers.buses.clearLayers();
+        const data = await fetchPage('buses', 500);
+        let count = 0;
+        data.forEach(b => {
+          const lat = parseFloat(b['wgs84_pos:lat']), lng = parseFloat(b['wgs84_pos:long']);
+          if (isNaN(lat) || isNaN(lng)) return;
+          const speed = b['ayto:velocidad'] || '0';
+          const line = b['ayto:linea'] || '?';
+          count++;
+          const m = L.marker([lat, lng], { icon: L.divIcon({
+            html: `<div style="background:#06b6d4;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;white-space:nowrap;border:1px solid #0891b2">${line}</div>`,
+            className: '', iconSize: [24, 16], iconAnchor: [12, 8]
+          })});
+          m.bindPopup(`<div class="popup-content"><h4>🚌 Línea ${line}</h4><div class="detail"><span class="detail-label">Vehículo</span><span class="detail-value">${b['ayto:vehiculo'] || '—'}</span></div><div class="detail"><span class="detail-label">Velocidad</span><span class="detail-value">${speed} km/h</span></div></div>`);
+          layers.buses.addLayer(m);
+        });
+        document.getElementById('countBuses').textContent = count;
+        document.getElementById('kpiBuses').textContent = count;
+      }
+      await refresh();
+      busInterval = setInterval(refresh, 15000);
+    }
+
+    async function loadParadas() {
+      const data = await fetchAll('paradas'); layers.paradas._loaded = true;
+      data.forEach(p => {
+        const lat = parseFloat(p['wgs84_pos:lat']), lng = parseFloat(p['wgs84_pos:long']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#06b6d4', 8, 0.5) });
+        m.bindPopup(`<div class="popup-content"><h4>🚏 ${p['ayto:parada'] || 'Parada'}</h4><div class="detail"><span class="detail-value">${p['ayto:sentido'] || ''}</span></div></div>`);
+        layers.paradas.addLayer(m);
+      });
+    }
+
+    async function loadTusBic() {
+      layers.tusbic._loaded = true;
+      try {
+        const r = await fetch('/api/tusbic');
+        const d = await r.json();
+        const network = d.countries?.[0]?.cities?.[0];
+        if (!network) return;
+        let totalBikes = 0;
+        (network.places || []).forEach(s => {
+          const bikes = s.bikes || 0; totalBikes += bikes;
+          const free = s.free_racks || 0;
+          const total = bikes + free;
+          const pct = total > 0 ? (bikes / total * 100) : 0;
+          const color = pct > 50 ? '#22c55e' : pct > 20 ? '#eab308' : '#ef4444';
+          const m = L.marker([s.lat, s.lng], { icon: L.divIcon({
+            html: `<div style="background:${color}33;border:2px solid ${color};border-radius:6px;padding:2px 5px;font-size:10px;font-weight:700;color:${color};white-space:nowrap">🚲 ${bikes}</div>`,
+            className: '', iconSize: [40, 20], iconAnchor: [20, 10]
+          })});
+          m.bindPopup(`<div class="popup-content"><h4>🚲 ${s.name || 'Estación TUeBICI'}</h4><div class="detail"><span class="detail-label">Bicis disponibles</span><span class="detail-value">${bikes}</span></div><div class="detail"><span class="detail-label">Puestos libres</span><span class="detail-value">${free}</span></div><div class="detail"><span class="detail-label">Total</span><span class="detail-value">${total}</span></div></div>`);
+          layers.tusbic.addLayer(m);
+        });
+        document.getElementById('countBici').textContent = network.places?.length || 0;
+        document.getElementById('kpiBicis').textContent = totalBikes;
+      } catch (e) { console.error('TUeBICI error:', e); }
+    }
+
+    async function loadCarrilBici() {
+      const data = await fetchAll('carril-bici'); layers.carrilBici._loaded = true;
+      data.forEach(c => {
+        const wkt = c['ayto:WKT'] || c['dct:spatial']; if (!wkt) return;
+        const coords = parseUTMLine(wkt); if (!coords || coords.length < 2) return;
+        L.polyline(coords, { color: '#22c55e', weight: 3, opacity: 0.6, dashArray: '6 4' }).addTo(layers.carrilBici);
+      });
+    }
+
+    // --- Parking ---
+    async function loadZonasOla() {
+      const data = await fetchPage('zonas-ola', 50); layers.zonasOla._loaded = true;
+      data.forEach(z => {
+        const wkt = z['ayto:WKT'] || z['dct:spatial']; if (!wkt) return;
+        const rings = parseUTMPolygon(wkt); if (!rings) return;
+        const poly = L.polygon(rings, { color: '#f59e0b', weight: 2, opacity: 0.6, fillColor: '#f59e0b', fillOpacity: 0.08 });
+        poly.bindTooltip(`OLA ${z['ayto:Zona'] || ''}`, { className: 'district-tooltip', sticky: true });
+        layers.zonasOla.addLayer(poly);
+      });
+    }
+
+    async function loadPlazasMotos() {
+      const data = await fetchAll('plazas-motos'); layers.plazasMotos._loaded = true;
+      data.forEach(p => {
+        let lat = parseFloat(p['latWGS84']), lng = parseFloat(p['lonWGS84']);
+        if (isNaN(lat) || isNaN(lng)) {
+          const x = parseFloat(p['ayto:UtmX']), y = parseFloat(p['ayto:UtmY']);
+          if (!isNaN(x) && !isNaN(y)) [lat, lng] = utmToLatLng(x, y);
+        }
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#f59e0b', 6, 0.6) });
+        m.bindPopup(`<div class="popup-content"><h4>🏍️ Parking motos</h4><div class="detail"><span class="detail-value">${p['ayto:NombreCalle'] || '—'}</span></div><div class="detail"><span class="detail-label">Plazas</span><span class="detail-value">${p['ayto:PlazasBateria'] || '—'}</span></div></div>`);
+        layers.plazasMotos.addLayer(m);
+      });
+    }
+
+    async function loadPlazasPmr() {
+      const data = await fetchAll('plazas-pmr'); layers.plazasPmr._loaded = true;
+      data.forEach(p => {
+        let lat = parseFloat(p['latWGS84']), lng = parseFloat(p['lonWGS84']);
+        if (isNaN(lat) || isNaN(lng)) {
+          const x = parseFloat(p['ayto:UtmX']), y = parseFloat(p['ayto:UtmY']);
+          if (!isNaN(x) && !isNaN(y)) [lat, lng] = utmToLatLng(x, y);
+        }
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#8b5cf6', 6, 0.6) });
+        m.bindPopup(`<div class="popup-content"><h4>♿ Plaza PMR</h4><div class="detail"><span class="detail-value">${p['ayto:NombreCalle'] || '—'}</span></div></div>`);
+        layers.plazasPmr.addLayer(m);
+      });
+    }
+
+    async function loadZonasCarga() {
+      const data = await fetchAll('zonas-carga'); layers.zonasCarga._loaded = true;
+      data.forEach(z => {
+        let lat = parseFloat(z['latWGS84']), lng = parseFloat(z['lonWGS84']);
+        if (isNaN(lat) || isNaN(lng)) {
+          const x = parseFloat(z['ayto:UtmX']), y = parseFloat(z['ayto:UtmY']);
+          if (!isNaN(x) && !isNaN(y)) [lat, lng] = utmToLatLng(x, y);
+        }
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#14b8a6', 6, 0.5) });
+        m.bindPopup(`<div class="popup-content"><h4>📦 Zona carga/descarga</h4><div class="detail"><span class="detail-value">${z['ayto:NombreCalle'] || '—'}</span></div><div class="detail"><span class="detail-label">Horario</span><span class="detail-value">${z['ayto:Horario'] || '—'}</span></div></div>`);
+        layers.zonasCarga.addLayer(m);
+      });
+    }
+
+    // --- Tourism ---
+    async function loadPOI(endpoint, layerName, emoji, label) {
+      const data = await fetchPage(endpoint, 100); layers[layerName]._loaded = true;
+      data.forEach(p => {
+        const lat = parseFloat(p['ayto:latitud']), lng = parseFloat(p['ayto:longitud']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const name = p['ayto:Nombre'] || p['dc:name'] || p['dc:identifier'] || label;
+        const desc = (p['ayto:DescripcionES'] || p['dc:description'] || '').replace(/<[^>]+>/g, '').substring(0, 200);
+        const m = L.marker([lat, lng], { icon: pin(emoji, 18) });
+        m.bindPopup(`<div class="popup-content"><h4>${emoji} ${name}</h4>${p['ayto:direccion'] ? `<div class="detail"><span class="detail-value">${p['ayto:direccion']}</span></div>` : ''}${desc ? `<div style="color:#94a3b8;font-size:10px;margin-top:3px">${desc}</div>` : ''}</div>`, { maxWidth: 260 });
+        layers[layerName].addLayer(m);
+      });
+    }
+
+    function loadPlayas() { return loadPOI('playas', 'playas', '🏖️', 'Playa'); }
+    function loadMuseos() { return loadPOI('museos', 'museos', '🏛️', 'Museo'); }
+    function loadMonumentos() { return loadPOI('monumentos', 'monumentos', '🗿', 'Monumento'); }
+    function loadDeporte() { return loadPOI('deporte', 'deporte', '⚽', 'Instalación deportiva'); }
+    function loadBibliotecas() { return loadPOI('bibliotecas', 'bibliotecas', '📚', 'Biblioteca'); }
+
+    // --- City ---
+    async function loadDistricts() {
+      const data = await fetchPage('distritos', 20); layers.districts._loaded = true;
+      const pops = data.map(d => parseInt(d['ayto:poblacion']) || 0);
+      const maxP = Math.max(...pops), minP = Math.min(...pops);
+      data.forEach(d => {
+        const wkt = d['dct:spatial']; if (!wkt) return;
+        const rings = parseUTMPolygon(wkt); if (!rings) return;
+        const pop = parseInt(d['ayto:poblacion']) || 0;
+        const ratio = maxP > minP ? (pop - minP) / (maxP - minP) : 0.5;
+        const r = Math.round(56 + ratio * 199), g = Math.round(189 - ratio * 120), b = Math.round(248 - ratio * 200);
+        const color = `rgb(${r},${g},${b})`;
+        const poly = L.polygon(rings, { color, weight: 2, opacity: 0.7, fillColor: color, fillOpacity: 0.1 });
+        poly.bindTooltip(`<strong>Distrito ${d['ayto:distrito']}</strong><br>Población: ${pop.toLocaleString('es-ES')}`, { className: 'district-tooltip', sticky: true });
+        layers.districts.addLayer(poly);
+      });
+    }
+
+    async function loadComercios() {
+      const data = await fetchAll('comercios'); layers.comercios._loaded = true;
+      data.forEach(c => {
+        const lat = parseFloat(c['ayto:latitud']), lng = parseFloat(c['ayto:longitud']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#fb923c', 5, 0.5) });
+        m.bindPopup(`<div class="popup-content"><h4>🏪 ${c['dc:name'] || ''}</h4><div class="detail"><span class="detail-value">${c['ayto:direccion'] || '—'}</span></div></div>`);
+        layers.comercios.addLayer(m);
+      });
+    }
+
+    async function loadMercados() {
+      const data = await fetchPage('mercados', 50); layers.mercados._loaded = true;
+      data.forEach(d => {
+        const lat = parseFloat(d['ayto:latitud']), lng = parseFloat(d['ayto:longitud']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: pin('🏬', 20) });
+        m.bindPopup(`<div class="popup-content"><h4>🏬 ${d['dc:name'] || 'Mercado'}</h4><div class="detail"><span class="detail-value">${d['ayto:direccion'] || '—'}</span></div></div>`);
+        layers.mercados.addLayer(m);
+      });
+    }
+
+    async function loadHosteleria() {
+      const data = await fetchAll('hosteleria'); layers.hosteleria._loaded = true;
+      data.forEach(h => {
+        const lat = parseFloat(h['ayto:latitud']), lng = parseFloat(h['ayto:longitud']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const m = L.marker([lat, lng], { icon: dot('#f43f5e', 5, 0.5) });
+        m.bindPopup(`<div class="popup-content"><h4>🍽️ ${h['dc:name'] || ''}</h4><div class="detail"><span class="detail-value">${h['ayto:direccion'] || '—'}</span></div>${h['ayto:categoria'] ? `<span class="badge" style="background:#f43f5e33;color:#f43f5e">${h['ayto:categoria']}</span>` : ''}</div>`);
+        layers.hosteleria.addLayer(m);
+      });
+    }
+
+    async function loadParques() {
+      const data = await fetchPage('parques', 20); layers.parques._loaded = true;
+      data.forEach(p => {
+        const wkt = p['ayto:wkt'] || p['dct:spatial']; if (!wkt) return;
+        const rings = parseUTMPolygon(wkt); if (!rings) return;
+        L.polygon(rings, { color: '#22c55e', weight: 2, opacity: 0.5, fillColor: '#22c55e', fillOpacity: 0.12 })
+          .bindTooltip(p['dc:name'] || 'Parque', { className: 'district-tooltip', sticky: true })
+          .addTo(layers.parques);
+      });
+    }
+
+    // --- Environment ---
+    async function loadSensors() {
+      const data = await fetchAll('sensores'); layers.sensors._loaded = true;
+      data.forEach(s => {
+        const lat = parseFloat(s['ayto:latitude']), lng = parseFloat(s['ayto:longitude']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const noise = s['ayto:noise'] ? parseFloat(s['ayto:noise']) : null;
+        let color = '#64748b';
+        if (noise != null) color = noise < 45 ? '#22c55e' : noise < 60 ? '#eab308' : noise < 75 ? '#f97316' : '#ef4444';
+        const m = L.marker([lat, lng], { icon: L.divIcon({
+          html: `<div style="width:10px;height:10px;border-radius:2px;background:${color};opacity:0.7"></div>`,
+          className: '', iconSize: [10, 10], iconAnchor: [5, 5]
+        })});
+        m.bindPopup(`<div class="popup-content"><h4>🌡️ Sensor ${s['dc:identifier']}</h4><div class="detail"><span class="detail-label">Ruido</span><span class="detail-value">${noise != null ? noise + ' dB' : '—'}</span></div><div class="detail"><span class="detail-label">Tipo</span><span class="detail-value">${s['ayto:type'] || '—'}</span></div></div>`);
+        layers.sensors.addLayer(m);
+      });
+    }
+
+    async function loadAguaCalidad() {
+      const data = await fetchPage('agua-calidad', 50); layers.aguaCalidad._loaded = true;
+      data.forEach(a => {
+        const lat = parseFloat(a['ayto:latitud']), lng = parseFloat(a['ayto:longitud']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const ph = a['ayto:ph'] || '—', turb = a['ayto:turbidez'] || '—', cloro = a['ayto:cloro'] || '—';
+        const m = L.marker([lat, lng], { icon: pin('💧', 18) });
+        m.bindPopup(`<div class="popup-content"><h4>💧 Calidad del agua</h4><div class="detail"><span class="detail-label">Zona</span><span class="detail-value">${a['ayto:zona'] || '—'}</span></div><div class="detail"><span class="detail-label">pH</span><span class="detail-value">${ph}</span></div><div class="detail"><span class="detail-label">Turbidez</span><span class="detail-value">${turb}</span></div><div class="detail"><span class="detail-label">Cloro</span><span class="detail-value">${cloro}</span></div></div>`);
+        layers.aguaCalidad.addLayer(m);
+      });
+    }
+
+    // --- Containers ---
+    function createContainerMarker(c) {
+      const lat = parseFloat(c['ayto:latitud']), lng = parseFloat(c['ayto:longitud']);
       if (isNaN(lat) || isNaN(lng)) return null;
-
       const fill = c['ayto:nivelLlenado'] ? parseFloat(c['ayto:nivelLlenado']) : null;
       const temp = c['ayto:temperatura'] ? parseFloat(c['ayto:temperatura']).toFixed(1) : null;
       const type = c['ayto:residuo'] || 'Resto';
-      const typeInfo = WASTE_TYPES[type] || WASTE_TYPES['Resto'];
+      const ti = WASTE_TYPES[type] || WASTE_TYPES['Resto'];
       const color = getFillColor(fill);
-      const hasSensor = !!c['ayto:codigoSensor'];
-
-      const icon = L.divIcon({
-        html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2.5px solid ${typeInfo.color};box-shadow:0 0 6px ${color}44;"></div>`,
-        className: '', iconSize: [18, 18], iconAnchor: [9, 9]
-      });
-
-      const marker = L.marker([lat, lng], { icon });
-
-      const fillBar = fill !== null
-        ? `<div class="fill-bar"><div class="fill-bar-inner" style="width:${fill}%;background:${color}"></div></div>`
-        : '';
-      const fillText = fill !== null ? `${fill}% — ${getFillLabel(fill)}` : 'Sin sensor';
-      const tempText = temp !== null ? `${temp}°C` : '—';
-      const modified = c['dc:modified'] ? new Date(c['dc:modified']).toLocaleString('es-ES') : '—';
-
-      marker.bindPopup(`
-        <div class="popup-content">
-          <h4>${typeInfo.icon} ${c['dc:identifier']}</h4>
-          <span class="type-badge" style="background:${typeInfo.color}33;color:${typeInfo.color}">${typeInfo.label}</span>
-          <div class="detail"><span class="detail-label">Dirección</span></div>
-          <div class="detail"><span class="detail-value">${c['ayto:direccion'] || '—'}</span></div>
-          <div class="detail"><span class="detail-label">Nivel de llenado</span><span class="detail-value">${fillText}</span></div>
-          ${fillBar}
-          <div class="detail"><span class="detail-label">Temperatura</span><span class="detail-value">${tempText}</span></div>
-          <div class="detail"><span class="detail-label">Capacidad</span><span class="detail-value">${c['ayto:capacidad'] ? c['ayto:capacidad'] + 'L' : '—'}</span></div>
-          <div class="detail"><span class="detail-label">Estado</span><span class="detail-value">${c['ayto:estadoConservacion'] || '—'}</span></div>
-          <div class="detail"><span class="detail-label">Actualizado</span><span class="detail-value">${modified}</span></div>
-        </div>
-      `, { maxWidth: 280 });
-
-      marker._containerData = { type, fill, hasSensor };
-      return marker;
+      const m = L.marker([lat, lng], { icon: L.divIcon({
+        html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid ${ti.color};box-shadow:0 0 4px ${color}44"></div>`,
+        className: '', iconSize: [12, 12], iconAnchor: [6, 6]
+      })});
+      const bar = fill != null ? `<div class="fill-bar"><div class="fill-bar-inner" style="width:${fill}%;background:${color}"></div></div>` : '';
+      m.bindPopup(`<div class="popup-content"><h4>${ti.icon} ${c['dc:identifier']}</h4><span class="badge" style="background:${ti.color}33;color:${ti.color}">${ti.label}</span>
+        <div class="detail"><span class="detail-value">${c['ayto:direccion'] || '—'}</span></div>
+        <div class="detail"><span class="detail-label">Llenado</span><span class="detail-value">${fill != null ? fill + '% — ' + getFillLabel(fill) : 'Sin sensor'}</span></div>${bar}
+        <div class="detail"><span class="detail-label">Temp</span><span class="detail-value">${temp ? temp + '°C' : '—'}</span></div>
+        <div class="detail"><span class="detail-label">Capacidad</span><span class="detail-value">${c['ayto:capacidad'] ? c['ayto:capacidad'] + 'L' : '—'}</span></div></div>`, { maxWidth: 260 });
+      return m;
     }
 
-    // --- Render markers based on filters ---
-    function renderMarkers() {
-      markers.clearLayers();
-      let shown = 0;
+    function renderContainers() {
+      layers.containers.clearLayers();
       allContainers.forEach(c => {
         const type = c['ayto:residuo'] || 'Resto';
         const fill = c['ayto:nivelLlenado'] ? parseFloat(c['ayto:nivelLlenado']) : null;
         const hasSensor = !!c['ayto:codigoSensor'];
-
         if (!activeTypes.has(type)) return;
         if (activeFillFilter === 'sensor' && !hasSensor) return;
-        if (activeFillFilter === 'full' && (fill === null || fill < 80)) return;
-
-        const m = createMarker(c);
-        if (m) { markers.addLayer(m); shown++; }
+        if (activeFillFilter === 'full' && (fill == null || fill < 80)) return;
+        const m = createContainerMarker(c);
+        if (m) layers.containers.addLayer(m);
       });
     }
 
-    // --- Stats ---
-    function updateStats() {
+    // --- KPIs ---
+    function updateKPIs() {
       const total = allContainers.length;
-      const withSensor = allContainers.filter(c => !!c['ayto:codigoSensor']).length;
+      const withSensor = allContainers.filter(c => !!c['ayto:codigoSensor']);
+      const fills = withSensor.map(c => parseFloat(c['ayto:nivelLlenado'])).filter(f => !isNaN(f));
+      const avgFill = fills.length ? fills.reduce((a, b) => a + b, 0) / fills.length : 0;
+      const fullCount = fills.filter(f => f > 90).length;
+
       document.getElementById('statTotal').textContent = total.toLocaleString('es-ES');
-      document.getElementById('statSensors').textContent = withSensor.toLocaleString('es-ES');
-      document.getElementById('statUpdate').style.display = 'flex';
+      document.getElementById('statSensors').textContent = withSensor.length.toLocaleString('es-ES');
       document.getElementById('statTime').textContent = new Date().toLocaleTimeString('es-ES');
+      document.getElementById('countContainers').textContent = total.toLocaleString('es-ES');
+      document.getElementById('kpiTotal').textContent = total.toLocaleString('es-ES');
+      document.getElementById('kpiAvgFill').textContent = avgFill.toFixed(0) + '%';
+      document.getElementById('kpiAvgFillBar').style.width = avgFill + '%';
+      document.getElementById('kpiAvgFillBar').style.background = getFillColor(avgFill);
+      document.getElementById('kpiFull').textContent = fullCount;
+    }
+
+    // --- Weather ---
+    const SKY_ICONS = { '11':'☀️','11n':'🌙','12':'🌤️','13':'⛅','14':'🌥️','15':'☁️','16':'☁️','17':'🌦️','23':'🌦️','24':'🌦️','25':'🌧️','26':'🌧️','33':'🌨️','34':'🌨️','43':'🌧️','44':'🌧️','45':'🌧️','46':'🌧️','46n':'🌧️','51':'⛈️','52':'⛈️','53':'⛈️','54':'⛈️','61':'⛈️','71':'🌫️','72':'🌫️','73':'🌫️','81':'🌧️' };
+    const DAYS_ES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+    async function loadWeather() {
+      try {
+        const text = await (await fetch('/api/aemet')).text();
+        const xml = new DOMParser().parseFromString(text, 'text/xml');
+        const days = xml.querySelectorAll('prediccion > dia');
+        if (!days.length) return;
+        const today = days[0], hour = new Date().getHours();
+        const tempEl = today.querySelector('temperatura');
+        const maxT = tempEl?.querySelector('maxima')?.textContent, minT = tempEl?.querySelector('minima')?.textContent;
+        let currentTemp = maxT;
+        tempEl?.querySelectorAll('dato').forEach(d => {
+          if (Math.abs(parseInt(d.getAttribute('hora')) - hour) < 4) currentTemp = d.textContent;
+        });
+        let skyDesc = '', skyCode = '';
+        today.querySelectorAll('estado_cielo').forEach(s => {
+          const p = s.getAttribute('periodo'); if (!p) return;
+          const [a, b] = p.split('-').map(Number);
+          if (hour >= a && hour < b && s.getAttribute('descripcion')) { skyDesc = s.getAttribute('descripcion'); skyCode = s.textContent; }
+        });
+        let rainProb = '0';
+        today.querySelectorAll('prob_precipitacion').forEach(r => {
+          const p = r.getAttribute('periodo'); if (!p) return;
+          const [a, b] = p.split('-').map(Number);
+          if (hour >= a && hour < b && r.textContent) rainProb = r.textContent;
+        });
+        let windSpeed = '', windDir = '';
+        today.querySelectorAll('viento').forEach(w => {
+          const p = w.getAttribute('periodo'); if (!p) return;
+          const [a, b] = p.split('-').map(Number);
+          if (hour >= a && hour < b) { windSpeed = w.querySelector('velocidad')?.textContent || ''; windDir = w.querySelector('direccion')?.textContent || ''; }
+        });
+        const humMax = today.querySelector('humedad_relativa maxima')?.textContent || '';
+        let forecastHTML = '';
+        for (let i = 1; i < Math.min(5, days.length); i++) {
+          const d = days[i], fecha = d.getAttribute('fecha'), date = new Date(fecha);
+          const tMax = d.querySelector('temperatura maxima')?.textContent || '--';
+          const tMin = d.querySelector('temperatura minima')?.textContent || '--';
+          let daySkyCode = '';
+          d.querySelectorAll('estado_cielo').forEach(s => { const p = s.getAttribute('periodo'); if (p === '12-24' || p === '00-24') daySkyCode = s.textContent || daySkyCode; });
+          forecastHTML += `<div class="fc-day"><div class="fc-name">${DAYS_ES[date.getDay()]}</div><div class="fc-icon">${SKY_ICONS[daySkyCode] || '⛅'}</div><div class="fc-temps"><b>${tMax}°</b> ${tMin}°</div></div>`;
+        }
+        const wxHTML = `<div class="weather-now"><span class="weather-icon">${SKY_ICONS[skyCode] || '⛅'}</span><div><div class="weather-temp">${currentTemp}°</div><div class="weather-desc">${skyDesc || minT + '°/' + maxT + '°'}</div></div></div><div class="weather-details"><span>💧${rainProb}%</span><span>💨${windDir} ${windSpeed}</span><span>💦${humMax}%</span></div><div class="weather-forecast">${forecastHTML}</div>`;
+        document.getElementById('weatherWidget').innerHTML = wxHTML;
+        document.getElementById('weatherWidgetMobile').innerHTML = wxHTML;
+      } catch (e) { console.error('Weather error:', e); }
+    }
+
+    // --- Pollen ---
+    async function loadPollen() {
+      try {
+        const d = await (await fetch('/api/polen')).json();
+        const c = d.current || {};
+        const types = { alder_pollen: 'Aliso', birch_pollen: 'Abedul', grass_pollen: 'Gramíneas', mugwort_pollen: 'Artemisa', olive_pollen: 'Olivo', ragweed_pollen: 'Ambrosía' };
+        let html = '🌾 Polen: ';
+        let any = false;
+        Object.entries(types).forEach(([k, v]) => { if (c[k] > 0) { html += `${v}: ${c[k]} · `; any = true; } });
+        if (any) { document.getElementById('pollenInfo').innerHTML = html.slice(0, -3); document.getElementById('pollenInfo').style.display = 'block'; }
+      } catch (e) {}
+    }
+
+    // --- News ---
+    async function loadNews() {
+      try {
+        const text = await (await fetch('/api/noticias')).text();
+        const xml = new DOMParser().parseFromString(text, 'text/xml');
+        const items = xml.querySelectorAll('item');
+        if (!items.length) return;
+        let html = '';
+        items.forEach(item => {
+          const title = item.querySelector('title')?.textContent || '';
+          const link = item.querySelector('link')?.textContent || '#';
+          html += `<a href="${link}" target="_blank">${title}</a>`;
+        });
+        document.getElementById('newsTicker').innerHTML = html;
+        document.getElementById('newsWidget').classList.add('active');
+      } catch (e) {}
     }
 
     // --- Init ---
     async function init() {
+      const progress = document.getElementById('loadingProgress');
       try {
-        allContainers = await fetchAllContainers();
-        updateStats();
-        renderMarkers();
+        progress.textContent = 'Cargando contenedores...';
+        allContainers = await fetchAll('contenedores');
+        updateKPIs();
+        renderContainers();
         document.getElementById('loading').classList.add('hidden');
         setTimeout(() => document.getElementById('loading').remove(), 600);
 
-        // Auto-refresh every 2 minutes
         setInterval(async () => {
-          try {
-            allContainers = await fetchAllContainers();
-            updateStats();
-            renderMarkers();
-          } catch (e) { console.error('Refresh failed:', e); }
+          try { allContainers = await fetchAll('contenedores'); updateKPIs(); renderContainers(); } catch (e) {}
         }, 120000);
       } catch (e) {
-        document.getElementById('loadingProgress').textContent = 'Error al conectar con la API. Reintentando...';
+        progress.textContent = 'Error al conectar. Reintentando...';
         setTimeout(init, 5000);
       }
     }
 
     init();
+    loadWeather();
+    loadPollen();
+    loadNews();
+    setInterval(loadWeather, 1800000);
   </script>
 </body>
 </html>
