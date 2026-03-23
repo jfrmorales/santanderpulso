@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -21,9 +22,6 @@
     }
     .header h1 { font-size: 18px; font-weight: 700; color: #f8fafc; }
     .header h1 span { color: #38bdf8; }
-    .header-stats { display: flex; gap: 16px; font-size: 12px; color: #94a3b8; }
-    .header-stats .stat { display: flex; align-items: center; gap: 5px; }
-    .header-stats .dot { width: 8px; height: 8px; border-radius: 50%; }
 
     .sidebar {
       position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 1000;
@@ -158,9 +156,8 @@
       .stats-panel.shifted { left: 0; }
       .stats-panel { gap: 12px; padding: 6px 10px; }
       .stat-card .stat-value { font-size: 16px; }
-      .header-stats { display: none; }
       .weather-widget#weatherWidget { display: none; }
-      .weather-mobile { display: block; position: static; border-radius: 0; border: none; border-bottom: 1px solid rgba(148, 163, 184, 0.1); margin: -14px -14px 10px -14px; padding: 8px 12px; min-width: unset; }
+      .weather-mobile { display: block; position: static; border-radius: 0; border: none; border-bottom: 1px solid rgba(148, 163, 184, 0.1); margin: 6px -14px 10px -14px; padding: 8px 12px; min-width: unset; }
       .weather-mobile .weather-icon { font-size: 20px; }
       .weather-mobile .weather-temp { font-size: 18px; }
       .legend { bottom: 50px; right: 6px; }
@@ -177,27 +174,28 @@
 
   <div class="header">
     <h1>📡 <span>Santander</span> Pulso</h1>
-    <div class="header-stats">
-      <div class="stat"><div class="dot" style="background:#22c55e"></div> <span id="statTotal">-</span> contenedores</div>
-      <div class="stat"><div class="dot" style="background:#38bdf8"></div> <span id="statSensors">-</span> con sensor</div>
-      <div class="stat">Actualizado: <span id="statTime">-</span></div>
-    </div>
   </div>
 
   <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
 
   <div class="sidebar collapsed" id="sidebar">
+    <div style="display:flex;justify-content:flex-end;padding:6px 10px 0">
+      <button onclick="resetFilters()" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#94a3b8;font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(239,68,68,0.2)';this.style.color='#f87171';this.style.borderColor='rgba(239,68,68,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.08)';this.style.color='#94a3b8';this.style.borderColor='rgba(255,255,255,0.15)'">Resetear filtros</button>
+    </div>
     <div class="weather-widget weather-mobile" id="weatherWidgetMobile"></div>
 
     <div class="section">
       <div class="section-title">🗑️ Residuos</div>
-      <label class="layer-toggle"><input type="checkbox" checked onchange="toggleLayer('containers', this.checked)"><span class="label">Contenedores</span><span class="count" id="countContainers">-</span></label>
+      <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('containers', this.checked)"><span class="label">Contenedores</span><span class="count" id="countContainers">-</span></label>
       <label class="layer-toggle"><input type="checkbox" onchange="toggleLayer('papeleras', this.checked)"><span class="label">Papeleras</span><span class="count">3.774</span></label>
-      <div style="margin:4px 0 2px 0">
+      <div id="containerFilters" style="margin:4px 0 2px 0;display:none">
         <div id="typeFilters" style="margin-bottom:4px"></div>
         <button class="filter-btn active" data-filter="all" onclick="setFillFilter('all')">Todos</button>
-        <button class="filter-btn" data-filter="sensor" onclick="setFillFilter('sensor')">Con sensor</button>
-        <button class="filter-btn" data-filter="full" onclick="setFillFilter('full')">Llenos &gt;80%</button>
+        <button class="filter-btn" data-filter="low" onclick="setFillFilter('low')">🟢 Bajo</button>
+        <button class="filter-btn" data-filter="medium" onclick="setFillFilter('medium')">🟡 Medio</button>
+        <button class="filter-btn" data-filter="high" onclick="setFillFilter('high')">🟠 Alto</button>
+        <button class="filter-btn" data-filter="full" onclick="setFillFilter('full')">🔴 Lleno</button>
+        <button class="filter-btn" data-filter="sensor" onclick="setFillFilter('sensor')">📡 Con sensor</button>
       </div>
     </div>
 
@@ -258,7 +256,7 @@
     <div class="weather-now"><span class="weather-icon">⛅</span><div><div class="weather-temp">--°</div><div class="weather-desc">Cargando...</div></div></div>
   </div>
 
-  <div class="legend">
+  <div class="legend" id="fillLegend" style="display:none">
     <h3>Nivel de llenado</h3>
     <div class="legend-item"><div class="legend-color" style="background:#22c55e"></div> Bajo &lt;40%</div>
     <div class="legend-item"><div class="legend-color" style="background:#eab308"></div> Medio 40-70%</div>
@@ -269,14 +267,7 @@
 
   <div class="news-widget" id="newsWidget"><div class="news-ticker" id="newsTicker"></div></div>
 
-  <div class="stats-panel" id="statsPanel">
-    <div class="stat-card"><span class="stat-value" id="kpiTotal">-</span><span class="stat-label">Contenedores</span></div>
-    <div class="stat-card"><span class="stat-value" id="kpiAvgFill">-</span><span class="stat-label">Llenado medio</span>
-      <div class="stat-bar"><div class="stat-bar-inner" id="kpiAvgFillBar" style="width:0%;background:#38bdf8"></div></div></div>
-    <div class="stat-card"><span class="stat-value" id="kpiFull">-</span><span class="stat-label">Llenos &gt;90%</span></div>
-    <div class="stat-card"><span class="stat-value" id="kpiBuses">-</span><span class="stat-label">Buses activos</span></div>
-    <div class="stat-card"><span class="stat-value" id="kpiBicis">-</span><span class="stat-label">Bicis libres</span></div>
-  </div>
+  <div class="stats-panel" id="statsPanel"></div>
 
   <div id="map"></div>
 
@@ -368,8 +359,6 @@
       sensors: L.layerGroup(),
       aguaCalidad: L.layerGroup(),
     };
-    map.addLayer(layers.containers);
-
     // --- Sidebar ---
     function toggleSidebar() {
       sidebarOpen = !sidebarOpen;
@@ -391,8 +380,91 @@
 
     // --- Layer toggle ---
     function toggleLayer(name, on) {
-      if (on) { map.addLayer(layers[name]); if (!layers[name]._loaded && name !== 'containers') loadLayer(name); }
+      if (on) {
+        map.addLayer(layers[name]);
+        if (name === 'containers') {
+          if (allContainers.length) { renderContainers(); }
+          else { fetchAll('contenedores').then(d => { allContainers = d; updateKPIs(); renderContainers(); }); }
+        } else if (!layers[name]._loaded) { loadLayer(name); }
+      }
       else { map.removeLayer(layers[name]); if (name === 'buses' && busInterval) { clearTimeout(busInterval); busInterval = null; } }
+      if (name === 'containers') { document.getElementById('containerFilters').style.display = on ? '' : 'none'; document.getElementById('fillLegend').style.display = on ? '' : 'none'; }
+      saveLayerState();
+      updateStatsPanel();
+    }
+
+    // --- Layer persistence ---
+    function saveLayerState() {
+      const state = {};
+      document.querySelectorAll('.layer-toggle input[type=checkbox]').forEach(cb => {
+        const match = cb.getAttribute('onchange').match(/toggleLayer\('(\w+)'/);
+        if (match) state[match[1]] = cb.checked;
+      });
+      localStorage.setItem('santander-pulso-layers', JSON.stringify(state));
+    }
+    function restoreLayerState() {
+      const raw = localStorage.getItem('santander-pulso-layers');
+      if (!raw) return false;
+      try {
+        const state = JSON.parse(raw);
+        document.querySelectorAll('.layer-toggle input[type=checkbox]').forEach(cb => {
+          const match = cb.getAttribute('onchange').match(/toggleLayer\('(\w+)'/);
+          if (match && state[match[1]]) { cb.checked = true; toggleLayer(match[1], true); }
+        });
+        return true;
+      } catch (e) { return false; }
+    }
+    function resetFilters() {
+      document.querySelectorAll('.layer-toggle input[type=checkbox]').forEach(cb => {
+        if (cb.checked) {
+          cb.checked = false;
+          const match = cb.getAttribute('onchange').match(/toggleLayer\('(\w+)'/);
+          if (match) toggleLayer(match[1], false);
+        }
+      });
+      localStorage.removeItem('santander-pulso-layers');
+    }
+
+    // --- Dynamic stats panel ---
+    const layerStats = {};
+    function updateStatsPanel() {
+      const panel = document.getElementById('statsPanel');
+      const cards = [];
+      const active = Object.keys(layers).filter(k => map.hasLayer(layers[k]));
+      if (!active.length) { panel.innerHTML = ''; return; }
+
+      if (active.includes('containers') && allContainers.length) {
+        const total = allContainers.length;
+        const withSensor = allContainers.filter(c => !!c['ayto:codigoSensor']);
+        const fills = withSensor.map(c => parseFloat(c['ayto:nivelLlenado'])).filter(f => !isNaN(f));
+        const avgFill = fills.length ? fills.reduce((a, b) => a + b, 0) / fills.length : 0;
+        const fullCount = fills.filter(f => f > 90).length;
+        cards.push(stat(total.toLocaleString('es-ES'), 'Contenedores'));
+        cards.push(stat(avgFill.toFixed(0) + '%', 'Llenado medio', avgFill));
+        cards.push(stat(fullCount, 'Llenos >90%'));
+      }
+      if (active.includes('buses') && layerStats.buses) cards.push(stat(layerStats.buses, 'Buses activos'));
+      if (active.includes('tusbic') && layerStats.bicis) cards.push(stat(layerStats.bicis, 'Bicis libres'));
+      if (active.includes('paradas') && layerStats.paradas) cards.push(stat(layerStats.paradas, 'Paradas'));
+      if (active.includes('busRoutes') && layerStats.routes) cards.push(stat(layerStats.routes, 'Líneas bus'));
+      if (active.includes('papeleras')) cards.push(stat('3.774', 'Papeleras'));
+      if (active.includes('comercios') && layerStats.comercios) cards.push(stat(layerStats.comercios, 'Comercios'));
+      if (active.includes('hosteleria') && layerStats.hosteleria) cards.push(stat(layerStats.hosteleria, 'Hostelería'));
+      if (active.includes('monumentos') && layerStats.monumentos) cards.push(stat(layerStats.monumentos, 'Monumentos'));
+      if (active.includes('playas')) cards.push(stat('13', 'Playas'));
+      if (active.includes('sensors') && layerStats.sensors) cards.push(stat(layerStats.sensors, 'Sensores'));
+
+      // Always show time if anything is active
+      cards.push(stat(new Date().toLocaleTimeString('es-ES'), 'Actualizado'));
+      panel.innerHTML = cards.join('');
+    }
+    function stat(value, label, barPct) {
+      let bar = '';
+      if (barPct != null) {
+        const color = barPct > 80 ? '#ef4444' : barPct > 50 ? '#f59e0b' : '#22c55e';
+        bar = `<div class="stat-bar"><div class="stat-bar-inner" style="width:${barPct}%;background:${color}"></div></div>`;
+      }
+      return `<div class="stat-card"><span class="stat-value">${value}</span><span class="stat-label">${label}</span>${bar}</div>`;
     }
 
     // --- Fetch helpers ---
@@ -476,12 +548,15 @@
       if (s <= 40) return { bg: '#22c55e', border: '#16a34a', label: 'Normal' };
       return { bg: '#f59e0b', border: '#d97706', label: 'Rápido' };
     }
-    function busIcon(line, speed, heading) {
+    function busIcon(line, speed, heading, stale) {
       const style = busSpeedStyle(speed);
       const s = parseFloat(speed) || 0;
       const arrow = s > 0 ? `<span style="display:inline-block;transform:rotate(${Math.round(heading)}deg);font-size:7px;margin-left:2px">&#9650;</span>` : '';
+      const opacity = stale ? '0.4' : '1';
+      const bg = stale ? '#475569' : style.bg;
+      const border = stale ? '#334155' : style.border;
       return L.divIcon({
-        html: `<div style="background:${style.bg};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;white-space:nowrap;border:1px solid ${style.border};display:flex;align-items:center">${line}${arrow}</div>`,
+        html: `<div style="background:${bg};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;white-space:nowrap;border:1px solid ${border};display:flex;align-items:center;opacity:${opacity}">${line}${arrow}</div>`,
         className: '', iconSize: [32, 16], iconAnchor: [16, 8]
       });
     }
@@ -556,6 +631,7 @@
             currentIds.add(vid);
             const speed = b['ayto:velocidad'] || '0';
             const line = b._lineNum || b['ayto:linea'] || '?';
+            const stale = !!b._stale;
             const prevLat = parseFloat(b._prevLat), prevLng = parseFloat(b._prevLng);
             const heading = (!isNaN(prevLat) && !isNaN(prevLng)) ? computeHeading(prevLat, prevLng, lat, lng) : 0;
             const lineId = b['ayto:linea'] || '';
@@ -563,10 +639,10 @@
               const m = busMarkers.get(vid);
               m._busLineId = lineId;
               animateMarker(m, [lat, lng], 1000);
-              m.setIcon(busIcon(line, speed, heading));
+              m.setIcon(busIcon(line, speed, heading, stale));
               m.setPopupContent(busPopup(b));
             } else {
-              const m = L.marker([lat, lng], { icon: busIcon(line, speed, heading) });
+              const m = L.marker([lat, lng], { icon: busIcon(line, speed, heading, stale) });
               m._busLineId = lineId;
               m.bindPopup(busPopup(b));
               m.on('click', () => focusBusLine(lineId));
@@ -582,7 +658,7 @@
           if (selectedBusLine) applyBusLineFocus();
           const count = currentIds.size;
           document.getElementById('countBuses').textContent = count || 'Sin servicio';
-          document.getElementById('kpiBuses').textContent = count || '—';
+          layerStats.buses = count || 0; updateStatsPanel();
           // Adaptive refresh
           if (meta.dataTimestamp === busLastDataTs) { refreshMs = Math.min(refreshMs + 5000, 60000); }
           else { refreshMs = 15000; }
@@ -628,6 +704,7 @@
           });
         });
         document.getElementById('countRoutes').textContent = routes.length;
+        layerStats.routes = routes.length; updateStatsPanel();
       } catch (e) { console.error('Bus routes error:', e); }
     }
 
@@ -640,6 +717,7 @@
         m.bindPopup(`<div class="popup-content"><h4>🚏 ${p['ayto:parada'] || 'Parada'}</h4><div class="detail"><span class="detail-value">${p['ayto:sentido'] || ''}</span></div></div>`);
         layers.paradas.addLayer(m);
       });
+      layerStats.paradas = data.length; updateStatsPanel();
     }
 
     async function loadTusBic() {
@@ -664,7 +742,7 @@
           layers.tusbic.addLayer(m);
         });
         document.getElementById('countBici').textContent = network.places?.length || 0;
-        document.getElementById('kpiBicis').textContent = totalBikes;
+        layerStats.bicis = totalBikes; updateStatsPanel();
       } catch (e) { console.error('TUeBICI error:', e); }
     }
 
@@ -746,6 +824,7 @@
         m.bindPopup(`<div class="popup-content"><h4>${emoji} ${name}</h4>${p['ayto:direccion'] ? `<div class="detail"><span class="detail-value">${p['ayto:direccion']}</span></div>` : ''}${desc ? `<div style="color:#94a3b8;font-size:10px;margin-top:3px">${desc}</div>` : ''}</div>`, { maxWidth: 260 });
         layers[layerName].addLayer(m);
       });
+      layerStats[layerName] = data.length; updateStatsPanel();
     }
 
     function loadPlayas() { return loadPOI('playas', 'playas', '🏖️', 'Playa'); }
@@ -781,6 +860,7 @@
         m.bindPopup(`<div class="popup-content"><h4>🏪 ${c['dc:name'] || ''}</h4><div class="detail"><span class="detail-value">${c['ayto:direccion'] || '—'}</span></div></div>`);
         layers.comercios.addLayer(m);
       });
+      layerStats.comercios = data.length; updateStatsPanel();
     }
 
     async function loadMercados() {
@@ -803,6 +883,7 @@
         m.bindPopup(`<div class="popup-content"><h4>🍽️ ${h['dc:name'] || ''}</h4><div class="detail"><span class="detail-value">${h['ayto:direccion'] || '—'}</span></div>${h['ayto:categoria'] ? `<span class="badge" style="background:#f43f5e33;color:#f43f5e">${h['ayto:categoria']}</span>` : ''}</div>`);
         layers.hosteleria.addLayer(m);
       });
+      layerStats.hosteleria = data.length; updateStatsPanel();
     }
 
     async function loadParques() {
@@ -832,6 +913,7 @@
         m.bindPopup(`<div class="popup-content"><h4>🌡️ Sensor ${s['dc:identifier']}</h4><div class="detail"><span class="detail-label">Ruido</span><span class="detail-value">${noise != null ? noise + ' dB' : '—'}</span></div><div class="detail"><span class="detail-label">Tipo</span><span class="detail-value">${s['ayto:type'] || '—'}</span></div></div>`);
         layers.sensors.addLayer(m);
       });
+      layerStats.sensors = data.length; updateStatsPanel();
     }
 
     async function loadAguaCalidad() {
@@ -850,21 +932,27 @@
     function createContainerMarker(c) {
       const lat = parseFloat(c['ayto:latitud']), lng = parseFloat(c['ayto:longitud']);
       if (isNaN(lat) || isNaN(lng)) return null;
-      const fill = c['ayto:nivelLlenado'] ? parseFloat(c['ayto:nivelLlenado']) : null;
-      const temp = c['ayto:temperatura'] ? parseFloat(c['ayto:temperatura']).toFixed(1) : null;
+      const hasSensor = !!c['ayto:codigoSensor'];
+      const fill = hasSensor && c['ayto:nivelLlenado'] ? parseFloat(c['ayto:nivelLlenado']) : null;
+      const temp = hasSensor && c['ayto:temperatura'] ? parseFloat(c['ayto:temperatura']).toFixed(1) : null;
       const type = c['ayto:residuo'] || 'Resto';
       const ti = WASTE_TYPES[type] || WASTE_TYPES['Resto'];
-      const color = getFillColor(fill);
+      const color = hasSensor ? getFillColor(fill) : ti.color;
+      const size = hasSensor ? 12 : 8;
+      const opacity = hasSensor ? 1 : 0.5;
       const m = L.marker([lat, lng], { icon: L.divIcon({
-        html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid ${ti.color};box-shadow:0 0 4px ${color}44"></div>`,
-        className: '', iconSize: [12, 12], iconAnchor: [6, 6]
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:${hasSensor ? '2px solid ' + ti.color : 'none'};box-shadow:${hasSensor ? '0 0 4px ' + color + '44' : 'none'};opacity:${opacity}"></div>`,
+        className: '', iconSize: [size, size], iconAnchor: [size/2, size/2]
       })});
-      const bar = fill != null ? `<div class="fill-bar"><div class="fill-bar-inner" style="width:${fill}%;background:${color}"></div></div>` : '';
-      m.bindPopup(`<div class="popup-content"><h4>${ti.icon} ${c['dc:identifier']}</h4><span class="badge" style="background:${ti.color}33;color:${ti.color}">${ti.label}</span>
-        <div class="detail"><span class="detail-value">${c['ayto:direccion'] || '—'}</span></div>
-        <div class="detail"><span class="detail-label">Llenado</span><span class="detail-value">${fill != null ? fill + '% — ' + getFillLabel(fill) : 'Sin sensor'}</span></div>${bar}
-        <div class="detail"><span class="detail-label">Temp</span><span class="detail-value">${temp ? temp + '°C' : '—'}</span></div>
-        <div class="detail"><span class="detail-label">Capacidad</span><span class="detail-value">${c['ayto:capacidad'] ? c['ayto:capacidad'] + 'L' : '—'}</span></div></div>`, { maxWidth: 260 });
+      let popupBody = `<div class="popup-content"><h4>${ti.icon} ${c['dc:identifier']}</h4><span class="badge" style="background:${ti.color}33;color:${ti.color}">${ti.label}</span>
+        <div class="detail"><span class="detail-value">${c['ayto:direccion'] || '—'}</span></div>`;
+      if (hasSensor) {
+        const bar = fill != null ? `<div class="fill-bar"><div class="fill-bar-inner" style="width:${fill}%;background:${getFillColor(fill)}"></div></div>` : '';
+        popupBody += `<div class="detail"><span class="detail-label">Llenado</span><span class="detail-value">${fill != null ? fill + '% — ' + getFillLabel(fill) : 'Sin datos'}</span></div>${bar}
+        <div class="detail"><span class="detail-label">Temp</span><span class="detail-value">${temp ? temp + '°C' : '—'}</span></div>`;
+      }
+      popupBody += `<div class="detail"><span class="detail-label">Capacidad</span><span class="detail-value">${c['ayto:capacidad'] ? c['ayto:capacidad'] + 'L' : '—'}</span></div></div>`;
+      m.bindPopup(popupBody, { maxWidth: 260 });
       return m;
     }
 
@@ -876,7 +964,10 @@
         const hasSensor = !!c['ayto:codigoSensor'];
         if (!activeTypes.has(type)) return;
         if (activeFillFilter === 'sensor' && !hasSensor) return;
-        if (activeFillFilter === 'full' && (fill == null || fill < 80)) return;
+        if (activeFillFilter === 'low' && (fill == null || fill >= 40)) return;
+        if (activeFillFilter === 'medium' && (fill == null || fill < 40 || fill >= 70)) return;
+        if (activeFillFilter === 'high' && (fill == null || fill < 70 || fill >= 90)) return;
+        if (activeFillFilter === 'full' && (fill == null || fill < 90)) return;
         const m = createContainerMarker(c);
         if (m) layers.containers.addLayer(m);
       });
@@ -884,21 +975,8 @@
 
     // --- KPIs ---
     function updateKPIs() {
-      const total = allContainers.length;
-      const withSensor = allContainers.filter(c => !!c['ayto:codigoSensor']);
-      const fills = withSensor.map(c => parseFloat(c['ayto:nivelLlenado'])).filter(f => !isNaN(f));
-      const avgFill = fills.length ? fills.reduce((a, b) => a + b, 0) / fills.length : 0;
-      const fullCount = fills.filter(f => f > 90).length;
-
-      document.getElementById('statTotal').textContent = total.toLocaleString('es-ES');
-      document.getElementById('statSensors').textContent = withSensor.length.toLocaleString('es-ES');
-      document.getElementById('statTime').textContent = new Date().toLocaleTimeString('es-ES');
-      document.getElementById('countContainers').textContent = total.toLocaleString('es-ES');
-      document.getElementById('kpiTotal').textContent = total.toLocaleString('es-ES');
-      document.getElementById('kpiAvgFill').textContent = avgFill.toFixed(0) + '%';
-      document.getElementById('kpiAvgFillBar').style.width = avgFill + '%';
-      document.getElementById('kpiAvgFillBar').style.background = getFillColor(avgFill);
-      document.getElementById('kpiFull').textContent = fullCount;
+      document.getElementById('countContainers').textContent = allContainers.length.toLocaleString('es-ES');
+      updateStatsPanel();
     }
 
     // --- Weather ---
@@ -987,15 +1065,22 @@
     async function init() {
       const progress = document.getElementById('loadingProgress');
       try {
-        progress.textContent = 'Cargando contenedores...';
+        progress.textContent = 'Cargando datos...';
+        // Restore saved layer state (if any)
+        const hadSaved = restoreLayerState();
+        // Always load containers for navbar KPIs; only render markers if layer is visible
         allContainers = await fetchAll('contenedores');
         updateKPIs();
-        renderContainers();
+        if (map.hasLayer(layers.containers)) {
+          renderContainers();
+        }
         document.getElementById('loading').classList.add('hidden');
         setTimeout(() => document.getElementById('loading').remove(), 600);
 
         setInterval(async () => {
-          try { allContainers = await fetchAll('contenedores'); updateKPIs(); renderContainers(); } catch (e) {}
+          if (map.hasLayer(layers.containers)) {
+            try { allContainers = await fetchAll('contenedores'); updateKPIs(); renderContainers(); } catch (e) {}
+          }
         }, 120000);
       } catch (e) {
         progress.textContent = 'Error al conectar. Reintentando...';
